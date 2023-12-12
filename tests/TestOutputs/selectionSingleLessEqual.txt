@@ -1,0 +1,50 @@
+embedDBOperator* createOperator(embedDBState* state, void*** allocatedValues) {
+    embedDBIterator* it = (embedDBIterator*)malloc(sizeof(embedDBIterator));
+    it->minKey = NULL;
+    it->maxKey = NULL;
+    it->minData = NULL;
+    it->maxData = NULL;
+    embedDBInitIterator(state, it);
+
+    uint8_t numCols = 4;
+    int8_t colSizes[] = {4, 4, 4, 4};
+    int8_t colSignedness[] = {embedDB_COLUMN_UNSIGNED, embedDB_COLUMN_SIGNED, embedDB_COLUMN_SIGNED, embedDB_COLUMN_SIGNED};
+    embedDBSchema* schema = embedDBCreateSchema(numCols, colSizes, colSignedness);
+    embedDBOperator* scanOp = createTableScanOperator(state, it, schema);
+    int32_t* selValLTEWINDSPEED = (int32_t*)malloc(4);
+    *selValLTEWINDSPEED = 200;
+    embedDBOperator* selectLTEWINDSPEED = createSelectionOperator(scanOp, 3, SELECT_LTE, selValLTEWINDSPEED);
+    selectLTEWINDSPEED->init(selectLTEWINDSPEED);
+
+    embedDBFreeSchema(&schema);
+
+    *allocatedValues = (void**)malloc(2 * sizeof(void*));
+    ((void**)*allocatedValues)[0] = it;
+    ((void**)*allocatedValues)[1] = selValLTEWINDSPEED;
+
+    return selectLTEWINDSPEED;
+}
+
+void execOperator(embedDBState* state) {
+    void** allocatedValues;
+    embedDBOperator* op = createOperator(state, &allocatedValues);
+    void* recordBuffer = op->recordBuffer;
+    uint32_t* ID = (uint32_t*)((int8_t*)recordBuffer + 0);
+    int32_t* AIRTEMP = (int32_t*)((int8_t*)recordBuffer + 4);
+    int32_t* AIRPRES = (int32_t*)((int8_t*)recordBuffer + 8);
+    int32_t* WINDSPEED = (int32_t*)((int8_t*)recordBuffer + 12);
+
+    // Print as csv
+    while (exec(op)) {
+        printf("%d,%d,%d,%d\n", *ID, *AIRTEMP, *AIRPRES, *WINDSPEED);
+    }
+    printf("\n");
+
+    op->close(op);
+    embedDBFreeOperatorRecursive(&op);
+    recordBuffer = NULL;
+    for (int i = 0; i < 2; i++) {
+        free(allocatedValues[i]);
+    }
+    free(allocatedValues);
+}
