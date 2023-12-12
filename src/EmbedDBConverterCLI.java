@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.Scanner;
 
-public class EmbedDBSQLConverterCLI {
+public class EmbedDBConverterCLI {
     public static void main(String[] args) throws SQLException, InterruptedException {
         try (SQLConverter sqlConverter = new SQLConverter()) {
             Scanner scanner = new Scanner(System.in);
