@@ -1,0 +1,53 @@
+int8_t groupFunction(const void* lastRecord, const void* record) {
+    return 1;
+}
+
+embedDBOperator* createOperator(embedDBState* state, void*** allocatedValues) {
+    embedDBIterator* it = (embedDBIterator*)malloc(sizeof(embedDBIterator));
+    it->minKey = NULL;
+    it->maxKey = NULL;
+    it->minData = NULL;
+    it->maxData = NULL;
+    embedDBInitIterator(state, it);
+
+    uint8_t numCols = 4;
+    int8_t colSizes[] = {4, 4, 4, 4};
+    int8_t colSignedness[] = {embedDB_COLUMN_UNSIGNED, embedDB_COLUMN_SIGNED, embedDB_COLUMN_SIGNED, embedDB_COLUMN_SIGNED};
+    embedDBSchema* schema = embedDBCreateSchema(numCols, colSizes, colSignedness);
+    embedDBOperator* scanOp = createTableScanOperator(state, it, schema);
+    embedDBAggregateFunc* MINC1 = createMinAggregate(1, -4);
+    embedDBAggregateFunc* aggFuncs = (embedDBAggregateFunc*)malloc(1*sizeof(embedDBAggregateFunc));
+    aggFuncs[0] = *MINC1;
+    embedDBOperator* aggOp = createAggregateOperator(scanOp, groupFunction, aggFuncs, 1);
+    aggOp->init(aggOp);
+
+    embedDBFreeSchema(&schema);
+    free(MINC1);
+
+    *allocatedValues = (void**)malloc(2 * sizeof(void*));
+    ((void**)*allocatedValues)[0] = it;
+    ((void**)*allocatedValues)[1] = aggFuncs;
+
+    return aggOp;
+}
+
+void execOperator(embedDBState* state) {
+    void** allocatedValues;
+    embedDBOperator* op = createOperator(state, &allocatedValues);
+    void* recordBuffer = op->recordBuffer;
+    int32_t* C1 = (int32_t*)((int8_t*)recordBuffer + 0);
+
+    // Print as csv
+    while (exec(op)) {
+        printf("%d\n", *C1);
+    }
+    printf("\n");
+
+    op->close(op);
+    embedDBFreeOperatorRecursive(&op);
+    recordBuffer = NULL;
+    for (int i = 0; i < 2; i++) {
+        free(allocatedValues[i]);
+    }
+    free(allocatedValues);
+}
